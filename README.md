@@ -1,11 +1,11 @@
-##Overview
+## Overview
 This tool was designed to automate administration of a Nagios Core 4.2.4 installation.
 It contains scripts which pull data from Active Directory, a MySQL database, and a Lansweeper MSSQL database in order to 
 dynamically generate the relevant configuration files.  
 
 These files are pretty heavily geared towards a specific environment; care should be taken to customize them to for use elsewhere.
 
-##Features
+## Features
 * Simplified Server Monitoring
     * Adds new servers automatically as they appear in Lansweeper
     * Assigns correct contact(s) to server(s) based on data in Lansweeper and Active Directory
@@ -30,7 +30,7 @@ These files are pretty heavily geared towards a specific environment; care shoul
     * Email alerts contain a mailto: link, allowing users to simply respond to the email to register an acknowledgement of the outage
     * Email alerts can include a known resolution to problems, based on the custom monitor database
 
-##Requirements
+## Requirements
 * Strong understanding of PHP, Nagios, SQL
 * Nagios host with PHP with included MSSQL / IMAP / MySQL module support
 * An email account dedicated to the Nagios system
@@ -58,7 +58,7 @@ These files are pretty heavily geared towards a specific environment; care shoul
         * custom15 should be a boolean to determine if the server should be monitored or not
         * custom19 should be a comma separated list of codes for custom defined services
 
-##Instructions
+## Instructions
 Please note again:  These scripts will likely need to be heavily modified to fit a new organization, so consider them, and these instructions, as just a guide!
 1. Install Nagios 4.2.4 per the documentation and process outlined on the Nagios website.
 2. Copy the contents of this project to the Nagios directory, over-writing any file(s) necessary.

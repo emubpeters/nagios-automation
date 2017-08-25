@@ -1,0 +1,186 @@
+#!/usr/bin/php -c /etc/php.ini
+
+<?php
+/**
+ * Created by PhpStorm.
+ * User: bpeters
+ * Date: 3/15/2016
+ * Time: 9:29 AM
+ */
+
+# Include the classes file
+include('/usr/local/nagios/etc/CustomScripts/Config.php');
+include('/usr/local/nagios/etc/CustomScripts/Classes.php');
+
+# Get the inputs from the Nagios service
+array_shift($argv);
+$NotifyType = array_shift($argv);  /*1*/
+$HostName = array_shift($argv);    /*2*/
+$HostGroupName = array_shift($argv);    /*2*/
+$HostAlias = array_shift($argv);   /*3*/
+$HostState = array_shift($argv);    /*4*/
+$HostAddress = array_shift($argv);   /*5*/
+$ServiceOutput = array_shift($argv);   /*6*/
+$DateTime = array_shift($argv);     /*7*/
+$ServiceDescription  = array_shift($argv);    /*8*/
+$ServiceState  = array_shift($argv);   /*9*/
+$To = array_shift($argv);           /*10*/
+$DurationS = array_shift($argv);   /*11*/
+$DurationH = round(($DurationS)/3600);   /*11*/
+$DurationM = round(($DurationS % 3600)/60);
+$ExecTime = array_shift($argv);       /*12*/
+$Totwarnings = array_shift($argv);     /*13*/
+$Totcritical = array_shift($argv);      /*14*/
+$Totunknowns = array_shift($argv);     /*15*/
+$TotOK = array_shift($argv);
+$LastServiceOK = array_shift($argv);    /*16*/
+$LastServiceWarning = array_shift($argv);     /*17*/
+$Attempts = array_shift($argv);     /*18*/
+$Comments = array_shift($argv);
+$f_downwarn = $Duration;
+
+# Set our background color, depending on the notification type
+$f_color="#dddddd";
+if($ServiceState=="WARNING") {$f_color="#f48400";}
+if($ServiceState=="CRITICAL") {$f_color="#f40000";}
+if($ServiceState=="OK") {$f_color="#00b71a";}
+if($ServiceState=="UNKNOWN") {$f_color="#cc00de";}
+
+# Get the Lansweeper assetID for this system
+$Lansweeper = new LansweeperDB();
+$AssetID = $Lansweeper->getAssetIDByName($HostAlias);
+$Downtime = $Lansweeper->getPatchGroup($AssetID);
+$Details = $Lansweeper->getServersDetailsByID($AssetID);
+$Contacts = "Primary OS: " . $Details[0]['Primary OS Contact'] . ", Secondary OS: " . $Details[0]['Secondary OS Contact'] . ", Primary App: " . $Details[0]['Primary App Contact'] . ", Secondary App: " . $Details[0]['Secondary App Contact'];
+
+# Generate a service code for this outage
+$code = $HostName . $HostAlias . $DateTime . $ServiceDescription;
+$code = md5($code);
+$code = substr($code, 2, 30);
+
+# Check if this is a continuing problem
+if($NotifyType=="PROBLEM")
+{
+ $currenttime = time();
+ $file_name = "/tmp/$HostName.$ServiceDescription.txt";
+ if ($Attempts==1)
+ {
+  if(file_exists($file_name)==true) {unlink($file_name);}
+  $currenttime = $currenttime+round(($Duration * 60),0);
+  file_put_contents($file_name, "$currenttime");
+ }
+}
+
+if($NotifyType=="RECOVERY")
+{
+ $currenttime = time();
+ $oldtime = time();
+ $file_name = "/tmp/$HostName.$ServiceDescription.txt";
+ if (file_exists($file_name)==true)
+ {
+  $oldtime = intval(file_get_contents($file_name));
+ }
+ $f_downwarn = round(($currenttime - $oldtime)/60,2);
+}
+
+# Clean up output a bit
+$ServiceOutput = str_replace("(","/",$ServiceOutput);
+$ServiceOutput = str_replace(")","/",$ServiceOutput);
+$ServiceOutput = str_replace("[","/",$ServiceOutput);
+$ServiceOutput = str_replace("]","/",$ServiceOutput);
+
+# Set a custom subject if this is a printer issue
+if ($HostGroupName == 'IT-Kiosk-Printers' || $HostGroupName == 'IT-Lab-Printers' ) {
+ $subject = "Printer Issue - Nagios Warning";
+} else {
+ $subject = "$NotifyType Service: $HostName ($ServiceDescription) [$ServiceState]";
+}
+
+# Find if there's an appropriate resolution for this service issue
+$DB = new MonitorDB();
+$Resolution = $DB->GetResolutions($ServiceDescription);
+
+# Set our email headers
+$headers = "From: someone@email.com\r\n";
+$headers .= "Content-type: text/html\r\n";
+
+# Build the email body
+$from  ="someone@email.com";
+$body = "<html><body><h2 style='color: #006600'>Some Company: Service Report Details</h2><br><table border=0 width='98%' cellpadding=0 cellspacing=0><tr><td valign='top'>\r\n";
+$body .= "<table border=0 cellpadding=0 cellspacing=0 width='97%'>";
+$body .= "<tr bgcolor=$f_color><td width='140'><b><font color=#ffffff>Notification:</font></b></td><td><font ";
+$body .= "color=#ffffff><b>$NotifyType [$ServiceState]</b></font></td></tr>\r\n";
+$body .= "<tr bgcolor=#eeeeee><td><b>Service:</b></td><td><font color=#0000CC><b>$ServiceDescription</b></font></td></tr>\r\n";
+$body .= "<tr bgcolor=#fefefe><td><b>Server:</b></td><td><font color=#005500><b>$HostName ($HostAlias)</b></font></td></tr>\r\n";
+$body .= "<tr bgcolor=#eeeeee><td><b>Address:</b></td><td><font color=#005555><b>$HostAddress</b></font></td></tr>\r\n";
+$body .= "<tr bgcolor=#fefefe><td><b>Date/Time:</b></td><td><font color=#005555>$DateTime</font></td></tr>\r\n";
+$body .= "<tr bgcolor=#fefefe><td><b>Additional Info:</b></td><td>$ServiceOutput</td></tr>\r\n";
+$body .= "<tr bgcolor=#eeeeee><td><b>State Duration:</b></td><td><font color=#CC0000>$DurationH Hours, $DurationM Minutes</font></td></tr> \r\n";
+$body .= "<tr bgcolor=#fefefe><td><b>Service ExecTime:</b></td><td><font color=#CC0000><b>$ExecTime</b></font></td></tr>\r\n";
+$body .= "<tr bgcolor=#eeeeee><td><b>Comments:</b></td><td><font color=#005555>$Comments</font></td></tr></table> \r\n";
+$body .= "</td><td valign='top'><table border=0 cellpadding=0 cellspacing=0 width=250><tr bgcolor=#000055><td><b> \r\n";
+$body .= "<font color=#FFFFFF>$HostName Summary</font></b></td><td>.</td></tr> \r\n";
+$body .= "<tr bgcolor=#f6f6ff style='color:#00b71a'><td>Total Services OK: </td><td> $TotOK</td></tr>\r\n";
+$body .= "<tr bgcolor=#f6f6ff style='color:#f48400'><td>Total Service Warnings: </td><td> $Totwarnings</td></tr>\r\n";
+$body .= "<tr bgcolor=#fffef6 style='color:#f40000'><td>Total Service Critical: </td><td> $Totcritical</td></tr>\r\n";
+$body .= "<tr bgcolor=#f6f6ff><td>Total Service Unknowns: </td><td> $Totunknowns</td></tr>\r\n";
+$body .= "<tr bgcolor=#fffef6><td>Service State Duration: </td><td> $DurationH:$DurationM (H:M)</td></tr>\r\n";
+$body .= "<tr bgcolor=#fffef6><td>Downtime Group: </td><td> $Downtime</td></tr>\r\n";
+$body .= "</table><br/></td></tr></table><br/>\r\n";
+$body .= "<h3>Why Am I Getting This Notification?</h3>";
+$body .= "You are getting this notification because you have been identified as a contact for this server/service, either personally, or because you belong to a team that was listed.<br/><br> \r\n";
+
+# Customize the end of the mail, depending on the notification type
+if($NotifyType=="RECOVERY") {
+
+ $body .= "<h3>What Should I Do?</h3>";
+ $body .= "The service is back online, so you do not need to do anything.<br/><br> \r\n";
+
+} else {
+
+ $body .= "<h3>What Should I Do?</h3>";
+
+ # If this is not an acknloledgement, include a link for people to kill notification.
+ if ($NotifyType != "ACKNOWLEDGEMENT") {
+  if ($Resolution != '') {
+   $body .= $Resolution . " ";
+   $body .= '  If you need assistance, or have questions, please email the Team at team@email.com<br>';
+  } else {
+   $body .= "The Team will reach out to you for further instructions.  If you do anything on this server before then, please notify them at team@email.com to avoid any duplication of efforts.<br/><br> \r\n";
+  }
+
+  $body .= "<h3>How Can I Acknowledge This Service Alert / Stop Getting Notifed About This Service?</h3>";
+  $body .= "If you know why this is happening and you are working to resolve it, please click this link for a pre-generated acknowledgement email, and send it as-is: <a href='mailto:nagiosaccount@email.com?subject=SVC Code: " . $code . "'>Acknlowledgement Link</a>.  This will notify all other admins that you are working on the issue, and will disable further notifications.  Please note: It can take ~5 minutes for this to be processed once you send it.<br><br>";
+ } else {
+  $body .= "This outage has been " . $Comments . ".  If you have questions, please contact them to check on the outage status and what steps have been taken to resolve the issue.";
+ }
+ 
+ # Add contact info
+ $body .= "<h3>Who Are The Server Contacts?</h3>";
+ $body .= $Contacts;
+
+ # Say who was actually contacted
+ $body .= "<h3>Who got this alert?</h3>";
+ if ($Details[0]['Monitored'] == 'No') {
+  $body .= "Windows Team Only";
+ } else {
+  $body .= "All listed contacts";
+ }
+
+}
+
+# Close out the body
+$body .= "<br/> \r\n";
+$body .= "</body></html> \r\n";
+
+# Send eMail
+$m_true = mail($To, $subject, $body, $headers);
+echo $m_true;
+
+# Add a comment in the Lansweeper database about this service status, only if it's not already been done... so in this case, only if it's emailing Ben Peters
+$comment = $subject . " -- SVC Code: " . $code;
+if ($To == 'someone@email.com') {
+ $Lansweeper->addComment($AssetID, $comment, 'Nagios');
+}
+
+?>
